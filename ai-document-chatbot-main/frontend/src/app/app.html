@@ -1,0 +1,187 @@
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">C</div>
+      <div>
+        <h1>Clarence</h1>
+        <p>AI</p>
+      </div>
+    </div>
+
+    <section class="upload-card">
+      <div class="section-title">
+        <span>⇧</span>
+        <h2>Upload Document</h2>
+      </div>
+
+      <p>Upload your document and ask me anything about it.</p>
+
+      <label class="drop-zone">
+        <div class="upload-icon">☁</div>
+        <strong>Drag & drop your file here</strong>
+        <small>or click to browse</small>
+
+        <input
+          #fileInput
+          type="file"
+          accept=".pdf,.txt"
+          hidden
+          (change)="onFileSelected($event)"
+        />
+      </label>
+
+      <button class="choose-btn" type="button" (click)="triggerFileInput(fileInput)">
+        Choose File
+      </button>
+
+      <button
+        class="upload-btn"
+        type="button"
+        (click)="uploadDocument()"
+        [disabled]="isUploading || !selectedFile"
+      >
+        {{ isUploading ? 'Processing...' : 'Upload & Process' }}
+      </button>
+
+     
+    </section>
+
+    <section class="history-card">
+  <div class="history-title">
+    <h2>History</h2>
+    <button type="button" class="icon-btn" (click)="clearHistory()">↺</button>
+  </div>
+
+  @if (history.length === 0) {
+    <div class="empty-history">
+      No questions yet.
+    </div>
+  } @else {
+    <div class="history-list">
+      @for (item of history; track $index) {
+        <button
+          type="button"
+          class="history-item"
+          (click)="useHistoryQuestion(item)"
+        >
+         <p>{{ item.question }}</p>
+        </button>
+      }
+    </div>
+  }
+</section>
+  </aside>
+
+  <main class="main-content">
+    @if (!hasConversation) {
+      <section class="hero">
+        <div class="hero-logo">C</div>
+
+        <h1>Hello! I’m <span>Clarence AI</span></h1>
+
+        <p>
+          I can help you understand documents, find information,
+          and answer your questions.
+        </p>
+
+        <div class="active-doc">
+          Active document: {{ activeDocument }}
+        </div>
+      </section>
+
+      <section class="quick-actions">
+        <button
+          class="action-card"
+          type="button"
+          (click)="startPrompt('Ask a question about the uploaded document')"
+        >
+          <div class="action-icon blue">☏</div>
+          <h3>Ask a question</h3>
+          <p>Get answers to your questions</p>
+        </button>
+
+        <button
+          class="action-card"
+          type="button"
+          (click)="startPrompt('Summarize this document')"
+        >
+          <div class="action-icon green">▣</div>
+          <h3>Summarize a document</h3>
+          <p>Get a quick summary of your document</p>
+        </button>
+
+        <button
+          class="action-card"
+          type="button"
+          (click)="startPrompt('Find the most important information in this document')"
+        >
+          <div class="action-icon purple">⌕</div>
+          <h3>Find information</h3>
+          <p>Search and find specific information</p>
+        </button>
+
+        <button
+          class="action-card"
+          type="button"
+          (click)="startPrompt('Give me key insights from this document')"
+        >
+          <div class="action-icon orange">☼</div>
+          <h3>Get insights</h3>
+          <p>Extract insights and key points</p>
+        </button>
+      </section>
+    }
+
+    <section
+  #conversationArea
+  class="conversation-area"
+  [class.full-chat]="hasConversation"
+>
+      @if (!hasConversation) {
+        <div class="chat-row">
+          <div class="mini-logo">C</div>
+          <div class="message">
+            Upload a document first, then ask Clarence AI about its content.
+          </div>
+        </div>
+      }
+
+      @for (message of messages; track $index) {
+        <div class="chat-row" [class.user-row]="message.sender === 'user'">
+          @if (message.sender !== 'user') {
+            <div class="mini-logo">C</div>
+          }
+
+          <div
+            class="message"
+            [class.user-message]="message.sender === 'user'"
+            [class.system-message]="message.sender === 'system'"
+          >
+            {{ message.text }}
+          </div>
+        </div>
+      }
+
+      
+    </section>
+
+    <section class="chat-input">
+      <input
+        type="text"
+        placeholder="Type your question here..."
+        [(ngModel)]="question"
+        (keyup.enter)="askQuestion()"
+      />
+
+      <button class="attach-btn" type="button" (click)="triggerFileInput(fileInput)">⌕</button>
+
+      <button class="send-btn" type="button" (click)="askQuestion()" [disabled]="isAsking">
+        ➤ Send
+      </button>
+    </section>
+
+    <p class="note">
+      Clarence AI can make mistakes. Please verify important information.
+    </p>
+  </main>
+</div>
