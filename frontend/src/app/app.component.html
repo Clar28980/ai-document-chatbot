@@ -1,0 +1,227 @@
+<div class="flex h-screen bg-gray-100 font-sans overflow-hidden">
+  <!-- Sidebar for Document Upload -->
+  <aside class="w-80 bg-white border-r shadow-md flex flex-col">
+    <!-- Header -->
+    <div class="p-5 border-b text-center bg-gradient-to-r from-blue-600 to-blue-700 text-white">
+      <h1 class="text-xl font-bold tracking-wider">AI Chatbot</h1>
+      <p class="text-sm opacity-80">Document Assistant</p>
+    </div>
+    
+    <!-- Current Document Info -->
+    <div *ngIf="currentDocument" class="p-4 bg-blue-50 border-b">
+      <p class="text-xs text-blue-600 font-semibold uppercase tracking-wide mb-1">Active Document</p>
+      <div class="flex items-center space-x-2">
+        <span class="text-2xl">{{ getFileIcon(currentDocument.filename) }}</span>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-gray-800 truncate" title="{{ currentDocument.filename }}">
+            {{ currentDocument.filename }}
+          </p>
+          <p class="text-xs text-gray-500">{{ currentDocument.chunks }} chunks</p>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Upload Section -->
+    <div class="p-5 border-b">
+      <h2 class="text-sm font-semibold mb-3 text-gray-700 uppercase tracking-wide">Upload New</h2>
+      <input 
+        type="file" 
+        accept=".pdf,.txt" 
+        (change)="onFileSelected($event)" 
+        class="mb-3 block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition-all cursor-pointer" 
+      />
+      <button 
+        (click)="uploadDocument()" 
+        [disabled]="!selectedFile || uploadProgress" 
+        class="w-full bg-blue-600 text-white py-2.5 px-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-300 shadow-sm transition-all font-medium flex items-center justify-center space-x-2"
+      >
+        <svg *ngIf="uploadProgress" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span>{{ uploadProgress ? 'Processing...' : 'Upload & Process' }}</span>
+      </button>
+      <p *ngIf="uploadMessage" class="mt-3 text-sm text-gray-600 text-center p-2 bg-gray-50 rounded-lg" [ngClass]="{'text-red-600 bg-red-50': uploadMessage.includes('Error')}">
+        {{ uploadMessage }}
+      </p>
+    </div>
+    
+    <!-- Document List -->
+    <div class="flex-1 overflow-y-auto">
+      <div class="p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">Documents</h2>
+          <span class="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">{{ documents.length }}</span>
+        </div>
+        
+        <div *ngIf="documents.length === 0" class="text-center py-8 text-gray-400">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <p class="text-sm">No documents yet</p>
+        </div>
+        
+        <div class="space-y-2">
+          <div 
+            *ngFor="let doc of documents" 
+            (click)="switchDocument(doc.id)"
+            class="p-3 rounded-lg cursor-pointer transition-all group relative"
+            [ngClass]="{'bg-blue-100 border-blue-300 border': currentDocument?.id === doc.id, 'bg-gray-50 hover:bg-gray-100 border border-transparent': currentDocument?.id !== doc.id}"
+          >
+            <div class="flex items-start space-x-3">
+              <span class="text-xl">{{ getFileIcon(doc.filename) }}</span>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-gray-800 truncate" title="{{ doc.filename }}">
+                  {{ doc.filename }}
+                </p>
+                <p class="text-xs text-gray-500">{{ formatDate(doc.uploaded_at) }}</p>
+              </div>
+              <button 
+                (click)="deleteDocument(doc.id, $event)"
+                class="opacity-0 group-hover:opacity-100 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"
+                title="Delete document"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </button>
+            </div>
+            <div *ngIf="currentDocument?.id === doc.id" class="absolute left-0 top-0 bottom-0 w-1 bg-blue-600 rounded-l-lg"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Chat Area -->
+  <main class="flex-1 flex flex-col bg-gray-50 relative">
+    <!-- Chat Header -->
+    <div class="bg-white border-b px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white shadow-md">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+          </svg>
+        </div>
+        <div>
+          <h2 class="font-semibold text-gray-800">Chat</h2>
+          <p class="text-sm text-gray-500">
+            {{ currentDocument ? 'Ask about ' + currentDocument.filename : 'Upload a document to start' }}
+          </p>
+        </div>
+      </div>
+      
+      <!-- Chat Actions -->
+      <div class="flex items-center space-x-2" *ngIf="chatHistory.length > 0">
+        <button 
+          (click)="exportChat()"
+          class="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+          title="Export chat"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+        </button>
+        <button 
+          (click)="clearChat()"
+          class="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+          title="Clear chat"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
+      </div>
+    </div>
+    
+    <!-- Chat History Display -->
+    <div class="flex-1 overflow-y-auto p-6 space-y-6" #chatContainer>
+      <!-- Empty State -->
+      <div *ngIf="chatHistory.length === 0 && !currentDocument" class="flex h-full items-center justify-center text-gray-400 flex-col">
+        <div class="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </div>
+        <p class="text-lg font-medium">No document loaded</p>
+        <p class="text-sm">Upload a document from the sidebar to start chatting</p>
+      </div>
+      
+      <div *ngIf="chatHistory.length === 0 && currentDocument" class="flex h-full items-center justify-center text-gray-400 flex-col">
+        <div class="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+        </div>
+        <p class="text-lg font-medium">Ready to chat!</p>
+        <p class="text-sm">Ask questions about {{ currentDocument?.filename }}</p>
+      </div>
+      
+      <!-- Chat Messages -->
+      <div *ngFor="let msg of chatHistory" [ngClass]="{'flex justify-end': msg.role === 'user', 'flex justify-start': msg.role === 'ai'}">
+        <div class="flex items-end space-x-2 max-w-[80%]">
+          <!-- AI Avatar -->
+          <div *ngIf="msg.role === 'ai'" class="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center text-white text-xs flex-shrink-0">
+            AI
+          </div>
+          
+          <div 
+            [ngClass]="{'bg-blue-600 text-white rounded-br-none': msg.role === 'user', 'bg-white border text-gray-800 rounded-bl-none': msg.role === 'ai'}" 
+            class="rounded-2xl p-4 shadow-sm leading-relaxed"
+          >
+            <p class="whitespace-pre-wrap">{{ msg.text }}</p>
+            <p class="text-xs mt-2 opacity-60" *ngIf="msg.timestamp">
+              {{ msg.timestamp | date:'shortTime' }}
+            </p>
+          </div>
+          
+          <!-- User Avatar -->
+          <div *ngIf="msg.role === 'user'" class="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white text-xs flex-shrink-0">
+            You
+          </div>
+        </div>
+      </div>
+      
+      <!-- Loading Indicator -->
+      <div *ngIf="isLoading" class="flex justify-start">
+        <div class="flex items-end space-x-2 max-w-[80%]">
+          <div class="w-8 h-8 bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center text-white text-xs flex-shrink-0">
+            AI
+          </div>
+          <div class="bg-white border rounded-2xl rounded-bl-none p-4 shadow-sm">
+            <div class="flex space-x-2 items-center">
+              <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+              <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+              <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat Input Form -->
+    <div class="p-4 bg-white border-t">
+      <div class="flex items-center space-x-3 max-w-4xl mx-auto">
+        <div class="flex-1 relative">
+          <input 
+            type="text" 
+            [(ngModel)]="question" 
+            (keyup.enter)="askQuestion()" 
+            [placeholder]="currentDocument ? 'Ask something about your document...' : 'Upload a document first...'"
+            [disabled]="!currentDocument || isLoading"
+            class="w-full border rounded-full px-6 py-3.5 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm bg-gray-50 text-gray-800 disabled:bg-gray-100 disabled:cursor-not-allowed transition-all"
+          />
+        </div>
+        <button 
+          (click)="askQuestion()" 
+          [disabled]="isLoading || !question.trim() || !currentDocument" 
+          class="bg-blue-600 text-white p-3.5 rounded-full hover:bg-blue-700 disabled:bg-gray-300 transition-all shadow-md flex items-center justify-center"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </main>
+</div>
