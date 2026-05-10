@@ -5,8 +5,7 @@ pyodbc
 python-dotenv
 langchain
 langchain-community
-langchain-ollama
-faiss-cpu
+langchain-anthropic
 pypdf
 pymupdf
 sentence-transformers

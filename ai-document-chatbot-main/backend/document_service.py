@@ -1,8 +1,12 @@
 import os
 import json
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from fastapi import UploadFile
+
+from logger_config import setup_logger
+
+logger = setup_logger(__name__)
 
 try:
     from pypdf import PdfReader
@@ -20,9 +24,8 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 
 CACHE_FILE = os.path.join(UPLOAD_DIR, "document_text_cache.json")
-KEYWORDS_FILE = os.path.join(UPLOAD_DIR, "document_keywords.json")
 
-EMBEDDING_MODEL = "local-keyword-reader"
+EMBEDDING_MODEL = "local-document-reader"
 SUPPORTED_EXTENSIONS = [".pdf", ".txt", ".md", ".csv"]
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -35,13 +38,17 @@ def load_json(path: str, default):
     try:
         with open(path, "r", encoding="utf-8") as file:
             return json.load(file)
-    except Exception:
+    except Exception as e:
+        logger.error("Failed to load JSON %s: %s", path, e)
         return default
 
 
 def save_json(path: str, data):
-    with open(path, "w", encoding="utf-8") as file:
-        json.dump(data, file, indent=2, ensure_ascii=False)
+    try:
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump(data, file, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.error("Failed to save JSON %s: %s", path, e)
 
 
 def clean_text(text: str) -> str:
@@ -77,7 +84,7 @@ def extract_text_from_pdf_with_pypdf(file_path: str) -> str:
         return clean_text("\n".join(text_parts))
 
     except Exception as e:
-        print(f"pypdf failed: {e}")
+        logger.error("pypdf failed for %s: %s", file_path, e)
         return ""
 
 
@@ -100,7 +107,7 @@ def extract_text_from_pdf_with_pymupdf(file_path: str) -> str:
         return clean_text("\n".join(text_parts))
 
     except Exception as e:
-        print(f"PyMuPDF failed: {e}")
+        logger.error("PyMuPDF failed for %s: %s", file_path, e)
         return ""
 
 
@@ -108,15 +115,16 @@ def extract_text_from_pdf(file_path: str) -> str:
     text = extract_text_from_pdf_with_pypdf(file_path)
 
     if text and len(text) >= 30:
-        print(f"PDF read using pypdf: {os.path.basename(file_path)}")
+        logger.info("PDF read using pypdf: %s", os.path.basename(file_path))
         return text
 
     text = extract_text_from_pdf_with_pymupdf(file_path)
 
     if text and len(text) >= 30:
-        print(f"PDF read using PyMuPDF: {os.path.basename(file_path)}")
+        logger.info("PDF read using PyMuPDF: %s", os.path.basename(file_path))
         return text
 
+    logger.warning("No readable PDF text found: %s", os.path.basename(file_path))
     return ""
 
 
@@ -129,6 +137,9 @@ def extract_text_from_text_file(file_path: str) -> str:
                 return clean_text(file.read())
         except UnicodeDecodeError:
             continue
+        except Exception as e:
+            logger.error("Failed reading text file %s: %s", file_path, e)
+            return ""
 
     return ""
 
@@ -175,7 +186,8 @@ def tokenize(text: str) -> List[str]:
         "what", "who", "how", "many", "tell", "me",
         "about", "please", "can", "you", "i", "have",
         "has", "do", "does", "your", "my", "her", "his",
-        "him", "she", "he", "they", "them"
+        "him", "she", "he", "they", "them", "there", "their",
+        "define", "meaning", "explain"
     }
 
     return [
@@ -184,29 +196,14 @@ def tokenize(text: str) -> List[str]:
     ]
 
 
-def extract_keywords(text: str, max_keywords: int = 120) -> List[str]:
-    words = tokenize(text)
-    frequency = {}
-
-    for word in words:
-        frequency[word] = frequency.get(word, 0) + 1
-
-    sorted_words = sorted(
-        frequency.items(),
-        key=lambda item: item[1],
-        reverse=True
-    )
-
-    return [word for word, count in sorted_words[:max_keywords]]
-
-
 def rebuild_all_uploaded_documents_index() -> Dict[str, Any]:
     document_cache = {}
-    keyword_cache = {}
 
     total_files_found = 0
     successfully_read = 0
     failed_files = []
+
+    logger.info("Rebuilding uploaded documents index")
 
     for filename in os.listdir(UPLOAD_DIR):
         if filename in ["document_text_cache.json", "document_keywords.json"]:
@@ -226,6 +223,7 @@ def rebuild_all_uploaded_documents_index() -> Dict[str, Any]:
                     "filename": filename,
                     "reason": "No readable text found."
                 })
+                logger.warning("No readable text found: %s", filename)
                 continue
 
             chunks = make_chunks(text)
@@ -239,17 +237,17 @@ def rebuild_all_uploaded_documents_index() -> Dict[str, Any]:
                 "chunk_count": len(chunks)
             }
 
-            keyword_cache[filename] = extract_keywords(text)
             successfully_read += 1
+            logger.info("Indexed document: %s", filename)
 
         except Exception as e:
             failed_files.append({
                 "filename": filename,
                 "reason": str(e)
             })
+            logger.error("Failed indexing document %s: %s", filename, e)
 
     save_json(CACHE_FILE, document_cache)
-    save_json(KEYWORDS_FILE, keyword_cache)
 
     return {
         "total_files_found": total_files_found,
@@ -280,6 +278,8 @@ async def process_uploaded_document(file: UploadFile) -> Dict[str, Any]:
     with open(file_path, "wb") as output_file:
         output_file.write(content)
 
+    logger.info("Uploaded document saved: %s", safe_filename)
+
     result = rebuild_all_uploaded_documents_index()
 
     return {
@@ -293,35 +293,83 @@ async def process_uploaded_document(file: UploadFile) -> Dict[str, Any]:
     }
 
 
-def find_matching_document_by_keywords(question: str) -> Optional[Dict[str, Any]]:
-    keyword_cache = load_json(KEYWORDS_FILE, {})
+def score_text(question_tokens: List[str], text: str, filename: str = "") -> int:
+    text_lower = text.lower()
+    filename_lower = filename.lower()
 
-    if not keyword_cache:
+    score = 0
+
+    for token in question_tokens:
+        if token in filename_lower:
+            score += 10
+
+        if token in text_lower:
+            score += 5
+
+        exact_matches = re.findall(rf"\b{re.escape(token)}\b", text_lower)
+        score += len(exact_matches) * 2
+
+    return score
+
+
+def search_uploaded_documents(question: str, top_k: int = 5) -> str:
+    cache = load_json(CACHE_FILE, {})
+
+    if not cache:
         rebuild_all_uploaded_documents_index()
-        keyword_cache = load_json(KEYWORDS_FILE, {})
+        cache = load_json(CACHE_FILE, {})
 
-    if not keyword_cache:
-        return None
+    if not cache:
+        logger.info("No uploaded document cache found")
+        return ""
 
-    question_words = set(tokenize(question))
-    matches = []
+    question_tokens = tokenize(question)
 
-    for filename, keywords in keyword_cache.items():
-        keyword_set = set(str(keyword).lower() for keyword in keywords)
-        matched_words = question_words.intersection(keyword_set)
+    if not question_tokens:
+        logger.info("No useful question tokens found")
+        return ""
 
-        if matched_words:
-            matches.append({
-                "filename": filename,
-                "score": len(matched_words),
-                "matched_words": list(matched_words)
-            })
+    results = []
 
-    if not matches:
-        return None
+    for filename, data in cache.items():
+        chunks = data.get("chunks", [])
 
-    matches.sort(key=lambda item: item["score"], reverse=True)
-    return matches[0]
+        for chunk in chunks:
+            score = score_text(question_tokens, chunk, filename)
+
+            if score > 0:
+                results.append({
+                    "filename": filename,
+                    "score": score,
+                    "chunk": chunk
+                })
+
+    results.sort(key=lambda item: item["score"], reverse=True)
+
+    if not results:
+        logger.info("No document match found for question: %s", question)
+        return ""
+
+    best_score = results[0]["score"]
+
+    if best_score < 5:
+        logger.info("Document match too weak. Score: %s", best_score)
+        return ""
+
+    logger.info(
+        "Document match found: %s with score %s",
+        results[0]["filename"],
+        best_score
+    )
+
+    context_parts = []
+
+    for item in results[:top_k]:
+        context_parts.append(
+            f"Source file: {item['filename']}\n{item['chunk']}"
+        )
+
+    return "\n\n---\n\n".join(context_parts)
 
 
 def get_document_context_by_filename(filename: str, max_chars: int = 5000) -> str:
@@ -342,64 +390,6 @@ def get_document_context_by_filename(filename: str, max_chars: int = 5000) -> st
         return ""
 
     return f"Source file: {filename}\n{text[:max_chars]}"
-
-
-def search_uploaded_documents(question: str, top_k: int = 5) -> str:
-    cache = load_json(CACHE_FILE, {})
-
-    if not cache:
-        rebuild_all_uploaded_documents_index()
-        cache = load_json(CACHE_FILE, {})
-
-    if not cache:
-        return ""
-
-    matched_document = find_matching_document_by_keywords(question)
-
-    if matched_document:
-        return get_document_context_by_filename(matched_document["filename"])
-
-    question_tokens = tokenize(question)
-
-    if not question_tokens:
-        return ""
-
-    results = []
-
-    for filename, data in cache.items():
-        for chunk in data.get("chunks", []):
-            chunk_lower = chunk.lower()
-            filename_lower = filename.lower()
-
-            score = 0
-
-            for token in question_tokens:
-                if token in chunk_lower:
-                    score += 5
-
-                if token in filename_lower:
-                    score += 8
-
-            if score > 0:
-                results.append({
-                    "filename": filename,
-                    "score": score,
-                    "chunk": chunk
-                })
-
-    results.sort(key=lambda item: item["score"], reverse=True)
-
-    if not results:
-        return ""
-
-    context_parts = []
-
-    for item in results[:top_k]:
-        context_parts.append(
-            f"Source file: {item['filename']}\n{item['chunk']}"
-        )
-
-    return "\n\n---\n\n".join(context_parts)
 
 
 def get_all_uploaded_document_context(max_chars_per_file: int = 5000) -> str:

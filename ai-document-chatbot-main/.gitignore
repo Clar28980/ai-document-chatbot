@@ -1,6 +1,7 @@
 # Python
 backend/venv/
 backend/__pycache__/
+backend/**/__pycache__/
 backend/**/*.pyc
 __pycache__/
 *.pyc
@@ -15,11 +16,21 @@ frontend/node_modules/
 frontend/.angular/
 frontend/dist/
 
-# Generated vector/database files
+# Generated vector/database/cache files
 backend/data/*.pkl
+backend/data/faiss_index/
+backend/data/document_text_cache.json
+
+# Uploaded documents - do not push private PDFs/files
+backend/data/uploads/
+
+# Logs
+backend/data/logs/
+*.log
 
 # VS Code
 .vscode/
 
-# Logs
-*.log
+# Windows system files
+desktop.ini
+Thumbs.db

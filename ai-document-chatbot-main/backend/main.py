@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 
+from logger_config import setup_logger
 from chatbot_service import answer_question, LLM_MODEL
 
 from database import (
@@ -17,7 +18,6 @@ from document_service import (
     get_uploaded_files_status,
     rebuild_all_uploaded_documents_index,
     get_documents_debug,
-    find_matching_document_by_keywords,
     EMBEDDING_MODEL
 )
 
@@ -25,9 +25,15 @@ from memory_service import (
     save_to_memory,
     clear_memory,
     get_memory_items,
-    get_memory_count
+    get_memory_count,
+    get_memory_context,
+    is_follow_up_question
 )
 
+from precheck_service import precheck_question
+
+
+logger = setup_logger(__name__)
 
 app = FastAPI(title="Clarence AI Backend")
 
@@ -48,17 +54,14 @@ app.add_middleware(
 def startup_rebuild_documents():
     try:
         result = rebuild_all_uploaded_documents_index()
-
-        print("======================================")
-        print("AUTO DOCUMENT REBUILD ON STARTUP")
-        print("Total files found:", result.get("total_files_found"))
-        print("Successfully read:", result.get("successfully_read"))
-        print("Cached files:", result.get("cached_files"))
-        print("Failed files:", result.get("failed_files"))
-        print("======================================")
+        logger.info("AUTO DOCUMENT REBUILD ON STARTUP")
+        logger.info("Total files found: %s", result.get("total_files_found"))
+        logger.info("Successfully read: %s", result.get("successfully_read"))
+        logger.info("Cached files: %s", result.get("cached_files"))
+        logger.info("Failed files: %s", result.get("failed_files"))
 
     except Exception as e:
-        print("AUTO DOCUMENT REBUILD FAILED:", str(e))
+        logger.error("AUTO DOCUMENT REBUILD FAILED: %s", e)
 
 
 @app.get("/")
@@ -208,26 +211,30 @@ def ensure_documents_indexed():
         rebuild_all_uploaded_documents_index()
 
 
-def is_database_question(question: str) -> bool:
-    q = question.lower()
+def build_search_question(clean_question: str) -> str:
+    """
+    If the user asks follow-up like 'what are her skills?',
+    add memory context so document search knows who 'her' means.
+    """
+    if is_follow_up_question(clean_question):
+        logger.info("Follow-up question detected. Adding memory context to document search.")
+        return get_memory_context() + "\nCurrent question: " + clean_question
 
-    database_words = [
-        "database",
-        "user",
-        "users",
-        "service",
-        "services",
-        "category",
-        "categories",
-        "booking",
-        "bookings",
-        "support worker",
-        "support workers",
-        "worker",
-        "workers"
-    ]
+    return clean_question
 
-    return any(word in q for word in database_words)
+
+def get_safe_document_context(search_question: str) -> str:
+    """
+    Try normal document search first.
+    If it is weak/empty, use the full uploaded document as fallback.
+    """
+    document_context = search_uploaded_documents(search_question)
+
+    if not document_context or len(document_context.strip()) < 100:
+        logger.info("Using full document fallback")
+        document_context = get_all_uploaded_document_context()
+
+    return document_context
 
 
 @app.post("/ask")
@@ -239,16 +246,32 @@ async def ask_question(
         clean_question = question.strip()
         clean_type = question_type.strip().lower()
 
-        if not clean_question:
+        precheck = precheck_question(clean_question)
+
+        if not precheck["allowed"]:
             return {
                 "success": False,
-                "answer": "Please enter a question."
+                "answer": precheck["message"],
+                "source": "precheck",
+                "reason": precheck["reason"]
             }
 
         ensure_documents_indexed()
 
-        # 1. Database questions should use database only.
-        if clean_type == "database" or is_database_question(clean_question):
+        search_question = build_search_question(clean_question)
+
+        if clean_type == "document":
+            document_context = get_safe_document_context(search_question)
+
+            answer = answer_question(
+                question=clean_question,
+                document_context=document_context,
+                database_context="",
+                source_mode="document",
+                use_memory=True
+            )
+
+        elif clean_type == "database":
             direct_database_answer = answer_direct_database_question(clean_question)
 
             if direct_database_answer:
@@ -256,69 +279,42 @@ async def ask_question(
 
                 return {
                     "success": True,
-                    "answer": direct_database_answer
+                    "answer": direct_database_answer,
+                    "source": "database"
                 }
 
-            database_context = build_database_context()
+            database_context = build_database_context(clean_question)
 
             answer = answer_question(
                 question=clean_question,
                 document_context="",
                 database_context=database_context,
                 source_mode="database",
-                use_memory=False
+                use_memory=True
             )
 
-            save_to_memory(clean_question, answer)
-
-            return {
-                "success": True,
-                "answer": answer
-            }
-
-        # 2. Uploaded document questions use document_keywords.json.
-        matched_document = find_matching_document_by_keywords(clean_question)
-
-        if clean_type == "document" or matched_document:
-            document_context = search_uploaded_documents(clean_question)
-
-            if not document_context:
-                document_context = get_all_uploaded_document_context()
+        else:
+            document_context = get_safe_document_context(search_question)
+            database_context = build_database_context(clean_question)
 
             answer = answer_question(
                 question=clean_question,
                 document_context=document_context,
-                database_context="",
-                source_mode="document",
-                use_memory=False
+                database_context=database_context,
+                source_mode="auto",
+                use_memory=True
             )
-
-            save_to_memory(clean_question, answer)
-
-            return {
-                "success": True,
-                "answer": answer
-            }
-
-        # 3. Default: use database context only.
-        database_context = build_database_context()
-
-        answer = answer_question(
-            question=clean_question,
-            document_context="",
-            database_context=database_context,
-            source_mode="database",
-            use_memory=False
-        )
 
         save_to_memory(clean_question, answer)
 
         return {
             "success": True,
-            "answer": answer
+            "answer": answer,
+            "source": clean_type
         }
 
     except Exception as e:
+        logger.error("Ask error: %s", e)
         return {
             "success": False,
             "answer": f"Ask error: {str(e)}"
