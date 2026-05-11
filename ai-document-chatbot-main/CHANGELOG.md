@@ -47,7 +47,7 @@ All notable changes to the AI Document Chatbot project.
 - Initial release
 - FastAPI backend with LangChain integration
 - FAISS vector database for document embeddings
-- Ollama LLaMA 3 integration (local AI)
+- Claude integration through the Anthropic API
 - PDF and TXT file upload support
 - Angular 18 frontend
 - Tailwind CSS styling
@@ -72,7 +72,7 @@ All notable changes to the AI Document Chatbot project.
 ✅ Loads content from PDF/TXT files  
 ✅ Embeds and stores in local vector database (FAISS)  
 ✅ Uses LangChain to orchestrate the full pipeline  
-✅ Uses LLaMA 3 locally via Ollama (free, no API key needed)  
+✅ Uses Claude through the Anthropic API with `ANTHROPIC_API_KEY`  
 ✅ Angular UI for user interaction  
 ✅ Answers user questions about the document  
 ✅ **Bonus**: Multi-document support, persistent storage, chat export  

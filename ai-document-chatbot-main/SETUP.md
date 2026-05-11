@@ -4,109 +4,115 @@
 
 ### 1. Install Prerequisites
 
-1. **Python 3.8+** - Download from https://python.org
-2. **Node.js 18+** - Download from https://nodejs.org
-3. **Ollama** - Download from https://ollama.com
+1. Python 3.8+
+2. Node.js 18+
+3. Anthropic API key
 
-### 2. Setup Ollama
+A local LLM runner is not required.
 
-Open a terminal and run:
-```bash
-ollama pull llama3
+### 2. Configure Claude API Access
+
+Create `backend/.env`:
+
+```env
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+ANTHROPIC_MODEL=claude-haiku-4-5-20251001
+
+BACKEND_HOST=0.0.0.0
+BACKEND_PORT=8000
+FRONTEND_URL=http://localhost:4200
+
+CHUNK_SIZE=1000
+CHUNK_OVERLAP=200
+DATA_DIR=./data
 ```
 
-Keep Ollama running in the background.
+Keep your real API key private. Do not commit it.
 
 ### 3. Setup Backend
 
-```bash
+```powershell
 cd backend
-
-# Create virtual environment
 python -m venv venv
-
-# Activate it (Windows PowerShell)
-venv\Scripts\activate
-
-# Install dependencies
+.\venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
 ### 4. Setup Frontend
 
-```bash
+```powershell
 cd frontend
-
-# Install Node.js dependencies
 npm install
 ```
 
-### 5. (Optional) Configure Environment
-
-Copy the example environment file and customize if needed:
-```bash
-cd backend
-copy .env.example .env
-```
-
-Default configuration works without changes.
-
----
-
 ## Running the Application
 
-### Option 1: Use the Startup Script (Recommended)
+### Option 1: Startup Script
 
 ```powershell
 .\start.ps1
 ```
 
-Or with options:
+Options:
+
 ```powershell
-.\start.ps1 -SkipFrontend    # Start only backend
-.\start.ps1 -SkipBackend     # Start only frontend
-.\start.ps1 -Help            # Show help
+.\start.ps1 -SkipFrontend
+.\start.ps1 -SkipBackend
+.\start.ps1 -Help
 ```
 
 ### Option 2: Manual Start
 
-**Terminal 1 - Backend:**
-```bash
+Backend:
+
+```powershell
 cd backend
-venv\Scripts\activate
+.\venv\Scripts\activate
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-**Terminal 2 - Frontend:**
-```bash
+Frontend:
+
+```powershell
 cd frontend
 ng serve
 ```
 
----
-
 ## Verification
 
-After starting, verify everything is working:
+Run:
 
-1. **Backend Health Check**: http://localhost:8000/health
-2. **API Documentation**: http://localhost:8000/docs
-3. **Frontend App**: http://localhost:4200
+```powershell
+python backend\test_setup.py
+```
 
----
+Then open:
+
+- Backend docs: `http://localhost:8000/docs`
+- Frontend app: `http://localhost:4200`
 
 ## Common Issues
 
-### "ollama not found"
-- Make sure Ollama is installed and in your PATH
-- Restart your terminal after installation
+### Anthropic API key missing
 
-### "Cannot connect to backend"
-- Ensure backend is running on port 8000
-- Check Windows Firewall is not blocking the connection
+- Add `ANTHROPIC_API_KEY` to `backend/.env`
+- Restart the backend
 
-### "Module not found" errors
-- Reinstall dependencies: `pip install -r requirements.txt` (backend) or `npm install` (frontend)
+### Claude model access error
+
+- Confirm your Anthropic account has access to the configured model
+- Use `ANTHROPIC_MODEL=claude-haiku-4-5-20251001`
+
+### Cannot connect to backend
+
+- Ensure backend is running on port `8000`
+- Check Windows Firewall if needed
+
+### Module not found errors
+
+- Backend: `cd backend && pip install -r requirements.txt`
+- Frontend: `cd frontend && npm install`
 
 ### Port already in use
-- Change ports in environment configuration
+
+- Stop the process using the port, or change the port in your environment configuration

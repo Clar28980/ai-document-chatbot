@@ -6,6 +6,10 @@ from chatbot_service import answer_question, LLM_MODEL
 
 from database import (
     get_ndis_services,
+    get_recent_bookings,
+    get_service_count,
+    get_active_service_count,
+    get_booking_count,
     get_booking_summary,
     build_database_context,
     answer_direct_database_question
@@ -98,17 +102,60 @@ def database_test():
     try:
         services = get_ndis_services()
         bookings = get_booking_summary()
+        recent_bookings = get_recent_bookings()
 
         return {
             "success": True,
+            "service_count": get_service_count(),
+            "active_service_count": get_active_service_count(),
+            "booking_count": get_booking_count(),
             "services": services,
-            "booking_summary": bookings
+            "booking_summary": bookings,
+            "recent_bookings": recent_bookings
         }
 
     except Exception as e:
         return {
             "success": False,
             "message": f"Database error: {str(e)}"
+        }
+
+
+@app.get("/database/services")
+def database_services():
+    try:
+        services = get_ndis_services(limit=100)
+
+        return {
+            "success": True,
+            "count": len(services),
+            "services": services
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Services database error: {str(e)}"
+        }
+
+
+@app.get("/database/bookings")
+def database_bookings():
+    try:
+        summary = get_booking_summary()
+        recent_bookings = get_recent_bookings(limit=100)
+
+        return {
+            "success": True,
+            "count": get_booking_count(),
+            "booking_summary": summary,
+            "recent_bookings": recent_bookings
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Bookings database error: {str(e)}"
         }
 
 
@@ -294,6 +341,17 @@ async def ask_question(
             )
 
         else:
+            direct_database_answer = answer_direct_database_question(clean_question)
+
+            if direct_database_answer:
+                save_to_memory(clean_question, direct_database_answer)
+
+                return {
+                    "success": True,
+                    "answer": direct_database_answer,
+                    "source": "database"
+                }
+
             document_context = get_safe_document_context(search_question)
             database_context = build_database_context(clean_question)
 

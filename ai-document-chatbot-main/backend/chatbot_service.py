@@ -1,6 +1,7 @@
 import os
 import re
 from dotenv import load_dotenv
+from pydantic import SecretStr
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
@@ -23,11 +24,24 @@ if not ANTHROPIC_API_KEY:
 
 
 llm = ChatAnthropic(
-    model=LLM_MODEL,
+    model_name=LLM_MODEL,
     temperature=0,
-    max_tokens=350,
-    anthropic_api_key=ANTHROPIC_API_KEY
+    max_tokens_to_sample=350,
+    timeout=None,
+    stop=None,
+    api_key=SecretStr(ANTHROPIC_API_KEY or "")
 )
+
+
+def remove_markdown_formatting(text: str) -> str:
+    text = re.sub(r"(?m)^\s*[-*]\s+", "", text)
+    text = re.sub(r"(?m)^\s*\d+\.\s+", "", text)
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text = re.sub(r"__(.*?)__", r"\1", text)
+    text = re.sub(r"`([^`]*)`", r"\1", text)
+    text = text.replace("*", "")
+    text = text.replace("_", "")
+    return text
 
 
 def clean_answer(answer) -> str:
@@ -87,9 +101,11 @@ def clean_answer(answer) -> str:
         answer = answer.replace(phrase.capitalize(), "").strip()
         answer = answer.replace(phrase.title(), "").strip()
 
+    answer = remove_markdown_formatting(answer)
     answer = answer.replace("..", ".")
     answer = answer.replace(" ,", ",")
     answer = answer.replace(" .", ".")
+    answer = re.sub(r"\n{3,}", "\n\n", answer)
     answer = answer.strip(" ,.-")
 
     return answer if answer else FALLBACK_ANSWER
@@ -141,6 +157,10 @@ I could not find that information.
 - Do NOT start with "According to the CV".
 - Do NOT start with "Based on the document".
 - Do NOT mention CV, document, provided context, or database context.
+- Use plain text only.
+- Do NOT use markdown.
+- Do NOT use asterisks, bold text, or headings.
+- If you need to list items, write short plain lines without symbols.
 - Answer naturally and directly.
 
 Previous conversation:

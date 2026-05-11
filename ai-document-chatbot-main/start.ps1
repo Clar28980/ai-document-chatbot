@@ -16,8 +16,8 @@ if ($Help) {
     Write-Host "  -Help          Show this help message"
     Write-Host ""
     Write-Host "Prerequisites:"
-    Write-Host "  1. Ollama must be installed and running: https://ollama.com"
-    Write-Host "  2. Run: ollama pull llama3"
+    Write-Host "  1. backend\.env must contain ANTHROPIC_API_KEY"
+    Write-Host "  2. Optional: set ANTHROPIC_MODEL=claude-haiku-4-5-20251001"
     Write-Host "  3. Python virtual environment should be created"
     Write-Host "  4. Node.js dependencies should be installed"
     exit 0
@@ -28,23 +28,29 @@ Write-Host "  AI Document Chatbot Startup Script" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Function to check if a command exists
-function Test-Command($Command) {
-    $null = Get-Command $Command -ErrorAction SilentlyContinue
-    return $?
-}
-
 # Check prerequisites
 Write-Host "Checking prerequisites..." -ForegroundColor Yellow
 
-if (-not (Test-Command "ollama")) {
-    Write-Host "WARNING: Ollama not found. Please install from https://ollama.com" -ForegroundColor Red
+$envPath = Join-Path $PWD "backend\.env"
+
+if (-not (Test-Path $envPath)) {
+    Write-Host "WARNING: backend\.env not found. Add ANTHROPIC_API_KEY before asking questions." -ForegroundColor Red
 } else {
-    $ollamaCheck = ollama list 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "WARNING: Ollama is not running. Start it with: ollama serve" -ForegroundColor Red
+    $envLines = Get-Content $envPath
+    $apiKeyLine = $envLines | Where-Object { $_ -match '^\s*ANTHROPIC_API_KEY\s*=\s*(.+)\s*$' } | Select-Object -First 1
+    $modelLine = $envLines | Where-Object { $_ -match '^\s*ANTHROPIC_MODEL\s*=\s*(.+)\s*$' } | Select-Object -First 1
+
+    if (-not $apiKeyLine -or $apiKeyLine -match '^\s*ANTHROPIC_API_KEY\s*=\s*$') {
+        Write-Host "WARNING: ANTHROPIC_API_KEY is missing in backend\.env" -ForegroundColor Red
     } else {
-        Write-Host "Ollama is running" -ForegroundColor Green
+        Write-Host "Anthropic API key found in backend\.env" -ForegroundColor Green
+    }
+
+    if ($modelLine) {
+        $modelName = ($modelLine -split '=', 2)[1].Trim()
+        Write-Host "Anthropic model: $modelName" -ForegroundColor Green
+    } else {
+        Write-Host "Anthropic model: claude-haiku-4-5-20251001 (default)" -ForegroundColor Green
     }
 }
 
